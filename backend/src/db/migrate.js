@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import pool from './connection.js';
+import db from './connection.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,7 +28,24 @@ async function runMigrations() {
       const sql = fs.readFileSync(filePath, 'utf8');
 
       console.log(`📄 Running migration: ${file}`);
-      await pool.query(sql);
+
+      // Split SQL into individual statements and execute them
+      const statements = sql
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+      for (const statement of statements) {
+        try {
+          db.exec(statement);
+        } catch (error) {
+          // Ignore "already exists" errors
+          if (!error.message.includes('already exists')) {
+            throw error;
+          }
+        }
+      }
+
       console.log(`✅ Completed: ${file}`);
     }
 
@@ -37,7 +54,7 @@ async function runMigrations() {
     console.error('❌ Migration failed:', error);
     process.exit(1);
   } finally {
-    await pool.end();
+    db.close();
     process.exit(0);
   }
 }

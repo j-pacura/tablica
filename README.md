@@ -23,7 +23,7 @@ Aplikacja webowa do prowadzenia lekcji matematyki online z funkcją współdziel
 
 ### Backend
 - Node.js + Express.js
-- PostgreSQL (baza danych)
+- SQLite (baza danych - bez instalacji!)
 - Socket.io (WebSocket real-time)
 - JWT (autentykacja)
 - Bcrypt (hashowanie haseł)
@@ -39,8 +39,9 @@ Aplikacja webowa do prowadzenia lekcji matematyki online z funkcją współdziel
 ## Wymagania
 
 - Node.js 18+
-- PostgreSQL 14+
 - npm lub yarn
+
+**Uwaga:** Projekt używa SQLite - nie wymaga instalacji zewnętrznej bazy danych!
 
 ## Instalacja i Uruchomienie
 
@@ -53,16 +54,8 @@ cd tablica
 
 ### 2. Konfiguracja Bazy Danych
 
-Utwórz bazę danych PostgreSQL:
-
-```bash
-createdb tablica_dev
-```
-
-Lub w PostgreSQL CLI:
-```sql
-CREATE DATABASE tablica_dev;
-```
+**SQLite** - Baza danych zostanie utworzona automatycznie przy pierwszym uruchomieniu!
+Nie musisz nic instalować ani konfigurować. 🎉
 
 ### 3. Backend Setup
 
@@ -72,13 +65,7 @@ cd backend
 # Instalacja zależności
 npm install
 
-# Konfiguracja - skopiuj .env.example i edytuj dane
-cp .env.example .env
-
-# Edytuj plik .env i ustaw DATABASE_URL:
-# DATABASE_URL=postgresql://user:password@localhost:5432/tablica_dev
-
-# Uruchom migracje bazy danych
+# Uruchom migracje (utworzy bazę SQLite automatycznie)
 npm run migrate
 
 # Uruchom serwer deweloperski
@@ -197,12 +184,12 @@ tablica/
 ### Backend (.env)
 ```
 PORT=3001
-DATABASE_URL=postgresql://user:password@localhost:5432/tablica_dev
+DATABASE_PATH=./db/tablica.db
 JWT_SECRET=your-secret-key
 JWT_EXPIRES_IN=1h
 STORAGE_TYPE=local
 UPLOAD_DIR=./uploads
-FRONTEND_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:3002
 ```
 
 ### Frontend (.env)

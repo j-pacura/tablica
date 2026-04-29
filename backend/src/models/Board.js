@@ -8,16 +8,27 @@ class Board {
   }
 
   static async create({ teacherId, title }) {
+    const id = uuidv4();
     const shareToken = this.generateShareToken();
 
-    const result = await query(
-      `INSERT INTO boards (teacher_id, title, share_token)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [teacherId, title, shareToken]
+    await query(
+      `INSERT INTO boards (id, teacher_id, title, share_token)
+       VALUES ($1, $2, $3, $4)`,
+      [id, teacherId, title, shareToken]
     );
 
-    return result.rows[0];
+    return {
+      id,
+      teacher_id: teacherId,
+      title,
+      share_token: shareToken,
+      background_type: 'plain',
+      background_color: '#FFFFFF',
+      canvas_data: {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      is_active: true
+    };
   }
 
   static async findById(boardId) {
@@ -26,14 +37,24 @@ class Board {
       [boardId]
     );
 
+    if (result.rows[0] && result.rows[0].canvas_data) {
+      result.rows[0].canvas_data = JSON.parse(result.rows[0].canvas_data);
+      result.rows[0].is_active = Boolean(result.rows[0].is_active);
+    }
+
     return result.rows[0];
   }
 
   static async findByShareToken(shareToken) {
     const result = await query(
-      'SELECT * FROM boards WHERE share_token = $1 AND is_active = true',
+      'SELECT * FROM boards WHERE share_token = $1 AND is_active = 1',
       [shareToken]
     );
+
+    if (result.rows[0] && result.rows[0].canvas_data) {
+      result.rows[0].canvas_data = JSON.parse(result.rows[0].canvas_data);
+      result.rows[0].is_active = Boolean(result.rows[0].is_active);
+    }
 
     return result.rows[0];
   }
@@ -47,7 +68,10 @@ class Board {
       [teacherId]
     );
 
-    return result.rows;
+    return result.rows.map(board => ({
+      ...board,
+      is_active: Boolean(board.is_active)
+    }));
   }
 
   static async update(boardId, updates) {
@@ -70,33 +94,32 @@ class Board {
 
     values.push(boardId);
 
-    const result = await query(
+    await query(
       `UPDATE boards
        SET ${fields.join(', ')}
-       WHERE id = $${paramCount}
-       RETURNING *`,
+       WHERE id = $${paramCount}`,
       values
     );
 
-    return result.rows[0];
+    return await this.findById(boardId);
   }
 
   static async delete(boardId) {
-    const result = await query(
-      'DELETE FROM boards WHERE id = $1 RETURNING id',
+    await query(
+      'DELETE FROM boards WHERE id = $1',
       [boardId]
     );
 
-    return result.rows[0];
+    return { id: boardId };
   }
 
   static async setActive(boardId, isActive) {
-    const result = await query(
-      'UPDATE boards SET is_active = $1 WHERE id = $2 RETURNING *',
-      [isActive, boardId]
+    await query(
+      'UPDATE boards SET is_active = $1 WHERE id = $2',
+      [isActive ? 1 : 0, boardId]
     );
 
-    return result.rows[0];
+    return await this.findById(boardId);
   }
 
   // Check if teacher owns the board
