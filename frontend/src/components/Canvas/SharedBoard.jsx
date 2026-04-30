@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { boardsAPI } from '../../services/api';
+import useCanvas from '../../hooks/useCanvas';
+import Toolbar from './Toolbar';
+import Sidebar from './Sidebar';
 
 const SharedBoard = () => {
   const { token } = useParams();
@@ -24,6 +27,81 @@ const SharedBoard = () => {
       setLoading(false);
     }
   };
+
+  // Note: Students can't save directly, but we can add real-time sync later
+  const handleCanvasUpdate = useCallback(async (canvasData) => {
+    // This will be used for real-time sync via WebSocket
+    console.log('Canvas updated:', canvasData);
+  }, []);
+
+  const {
+    canvasRef,
+    currentTool,
+    setCurrentTool,
+    currentColor,
+    setCurrentColor,
+    strokeWidth,
+    setStrokeWidth,
+    undo,
+    redo,
+    addShape,
+    deleteSelected,
+    canUndo,
+    canRedo
+  } = useCanvas({
+    boardId: board?.id,
+    initialData: board?.canvas_data,
+    onCanvasUpdate: handleCanvasUpdate
+  });
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        switch (e.key.toLowerCase()) {
+          case 'z':
+            e.preventDefault();
+            if (e.shiftKey) {
+              redo();
+            } else {
+              undo();
+            }
+            break;
+          case 'y':
+            e.preventDefault();
+            redo();
+            break;
+          default:
+            break;
+        }
+        return;
+      }
+
+      switch (e.key.toLowerCase()) {
+        case 's':
+          setCurrentTool('select');
+          break;
+        case 'p':
+          setCurrentTool('pencil');
+          break;
+        case 'b':
+          setCurrentTool('pen');
+          break;
+        case 'e':
+          setCurrentTool('eraser');
+          break;
+        case 'delete':
+        case 'backspace':
+          deleteSelected();
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setCurrentTool, undo, redo, deleteSelected]);
 
   if (loading) {
     return (
@@ -65,40 +143,47 @@ const SharedBoard = () => {
         <p className="text-xs text-neutral-500">Tryb ucznia - możesz rysować i współpracować</p>
       </header>
 
-      {/* Canvas Area - Placeholder */}
+      {/* Canvas Area */}
       <div className="flex-1 flex">
         {/* Toolbar */}
-        <div className="w-16 bg-neutral-100 border-r border-neutral-200 flex flex-col items-center py-4 gap-2">
-          <div className="w-10 h-10 bg-neutral-300 rounded flex items-center justify-center cursor-pointer hover:bg-neutral-400">
-            ✏️
-          </div>
-          <div className="w-10 h-10 bg-neutral-300 rounded flex items-center justify-center cursor-pointer hover:bg-neutral-400">
-            🖊️
-          </div>
-          <div className="w-10 h-10 bg-neutral-300 rounded flex items-center justify-center cursor-pointer hover:bg-neutral-400">
-            ⬜
-          </div>
-          <div className="w-10 h-10 bg-neutral-300 rounded flex items-center justify-center cursor-pointer hover:bg-neutral-400">
-            ⭕
-          </div>
-        </div>
+        <Toolbar
+          currentTool={currentTool}
+          onToolChange={setCurrentTool}
+          onAddShape={addShape}
+        />
 
         {/* Canvas */}
-        <div className="flex-1 bg-white relative">
-          <div className="absolute inset-0 flex items-center justify-center text-neutral-400">
-            <div className="text-center">
-              <p className="text-lg">Wspólna tablica</p>
-              <p className="text-sm mt-2">Canvas z Fabric.js zostanie zintegrowany wkrótce</p>
-            </div>
-          </div>
+        <div className="flex-1 bg-white relative overflow-hidden">
+          <canvas ref={canvasRef} />
         </div>
+
+        {/* Sidebar */}
+        <Sidebar
+          currentColor={currentColor}
+          onColorChange={setCurrentColor}
+          strokeWidth={strokeWidth}
+          onStrokeWidthChange={setStrokeWidth}
+          currentTool={currentTool}
+        />
       </div>
 
       {/* Bottom Bar */}
       <div className="bg-white border-t border-neutral-200 px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <button className="px-2 py-1 text-sm hover:bg-neutral-100 rounded">Cofnij</button>
-          <button className="px-2 py-1 text-sm hover:bg-neutral-100 rounded">Ponów</button>
+          <button
+            onClick={undo}
+            disabled={!canUndo}
+            className="px-3 py-1 text-sm hover:bg-neutral-100 rounded disabled:opacity-50"
+          >
+            ↶ Cofnij
+          </button>
+          <button
+            onClick={redo}
+            disabled={!canRedo}
+            className="px-3 py-1 text-sm hover:bg-neutral-100 rounded disabled:opacity-50"
+          >
+            ↷ Ponów
+          </button>
         </div>
         <div className="text-sm text-neutral-600">
           Aktywni użytkownicy: 1
