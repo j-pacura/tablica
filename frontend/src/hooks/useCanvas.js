@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { fabric } from 'fabric';
 
 export const useCanvas = ({
@@ -15,7 +15,7 @@ export const useCanvas = ({
   const [history, setHistory] = useState({ past: [], present: null, future: [] });
 
   // Initialize Fabric.js canvas
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!canvasRef.current) return;
 
     // Small delay to ensure DOM is ready
@@ -23,8 +23,8 @@ export const useCanvas = ({
       if (!canvasRef.current) return;
 
       const fabricCanvas = new fabric.Canvas(canvasRef.current, {
-        width: window.innerWidth - 350, // Account for toolbar and sidebar
-        height: window.innerHeight - 120, // Account for header and footer
+        width: Math.max(window.innerWidth - 350, 800), // Account for toolbar and sidebar, min 800px
+        height: Math.max(window.innerHeight - 120, 600), // Account for header and footer, min 600px
         backgroundColor: '#FFFFFF',
         isDrawingMode: false,
       });

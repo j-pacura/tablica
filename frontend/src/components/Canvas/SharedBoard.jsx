@@ -154,7 +154,11 @@ const SharedBoard = () => {
 
         {/* Canvas */}
         <div className="flex-1 bg-white relative overflow-hidden">
-          <canvas ref={canvasRef} />
+          <canvas
+            ref={canvasRef}
+            id="fabric-canvas"
+            style={{ display: 'block' }}
+          />
         </div>
 
         {/* Sidebar */}
