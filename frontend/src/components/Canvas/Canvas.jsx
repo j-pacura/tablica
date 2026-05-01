@@ -7,7 +7,7 @@ import Button from '../UI/Button';
 const Canvas = () => {
   const { boardId } = useParams();
   const navigate = useNavigate();
-  const canvasRef = useRef(null);
+  const canvasContainerRef = useRef(null);
   const fabricCanvasRef = useRef(null);
   const [board, setBoard] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -19,59 +19,76 @@ const Canvas = () => {
 
   // Load board
   useEffect(() => {
+    const loadBoard = async () => {
+      try {
+        const response = await boardsAPI.getById(boardId);
+        setBoard(response.data.board);
+        setShareLink(`${window.location.origin}/shared/${response.data.board.share_token}`);
+      } catch (error) {
+        console.error('Failed to load board:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
     loadBoard();
   }, [boardId]);
 
-  const loadBoard = async () => {
-    try {
-      const response = await boardsAPI.getById(boardId);
-      setBoard(response.data.board);
-      setShareLink(`${window.location.origin}/shared/${response.data.board.share_token}`);
-    } catch (error) {
-      console.error('Failed to load board:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Initialize canvas - SIMPLE VERSION
+  // Initialize Fabric.js canvas - AFTER board loads
   useEffect(() => {
-    if (!canvasRef.current || fabricCanvasRef.current) return;
+    if (!board || !canvasContainerRef.current || fabricCanvasRef.current) return;
 
-    const canvas = new fabric.Canvas(canvasRef.current, {
+    console.log('Initializing Fabric.js canvas...');
+
+    // Create canvas element
+    const canvasEl = document.createElement('canvas');
+    canvasEl.id = 'fabric-canvas';
+    canvasContainerRef.current.appendChild(canvasEl);
+
+    // Initialize Fabric
+    const canvas = new fabric.Canvas('fabric-canvas', {
       width: 1400,
       height: 800,
       backgroundColor: '#FFFFFF',
       isDrawingMode: true
     });
 
-    // Add grid pattern
+    console.log('Fabric canvas created:', canvas);
+
+    // Add grid
     const gridSize = 20;
-    for (let i = 0; i < (1400 / gridSize); i++) {
+    for (let i = 0; i <= 1400 / gridSize; i++) {
       canvas.add(new fabric.Line([i * gridSize, 0, i * gridSize, 800], {
         stroke: '#e0e0e0',
+        strokeWidth: 1,
         selectable: false,
-        evented: false
+        evented: false,
+        objectCaching: false
       }));
     }
-    for (let i = 0; i < (800 / gridSize); i++) {
+    for (let i = 0; i <= 800 / gridSize; i++) {
       canvas.add(new fabric.Line([0, i * gridSize, 1400, i * gridSize], {
         stroke: '#e0e0e0',
+        strokeWidth: 1,
         selectable: false,
-        evented: false
+        evented: false,
+        objectCaching: false
       }));
     }
 
     // Setup brush
+    canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
     canvas.freeDrawingBrush.color = currentColor;
     canvas.freeDrawingBrush.width = strokeWidth;
 
     fabricCanvasRef.current = canvas;
 
     return () => {
-      canvas.dispose();
+      if (fabricCanvasRef.current) {
+        fabricCanvasRef.current.dispose();
+        fabricCanvasRef.current = null;
+      }
     };
-  }, []);
+  }, [board]);
 
   // Update tool
   useEffect(() => {
@@ -80,6 +97,7 @@ const Canvas = () => {
 
     if (currentTool === 'select') {
       canvas.isDrawingMode = false;
+      canvas.selection = true;
     } else if (currentTool === 'eraser') {
       canvas.isDrawingMode = true;
       canvas.freeDrawingBrush.color = '#FFFFFF';
@@ -97,22 +115,22 @@ const Canvas = () => {
     if (!canvas) return;
 
     let shape;
+    const options = {
+      left: 200,
+      top: 200,
+      fill: 'transparent',
+      stroke: currentColor,
+      strokeWidth: strokeWidth
+    };
+
     if (type === 'rectangle') {
-      shape = new fabric.Rect({
-        left: 100,
-        top: 100,
-        width: 100,
-        height: 100,
-        fill: 'transparent',
-        stroke: currentColor,
-        strokeWidth: strokeWidth
-      });
+      shape = new fabric.Rect({ ...options, width: 100, height: 100 });
     } else if (type === 'circle') {
-      shape = new fabric.Circle({
-        left: 100,
-        top: 100,
-        radius: 50,
-        fill: 'transparent',
+      shape = new fabric.Circle({ ...options, radius: 50 });
+    } else if (type === 'triangle') {
+      shape = new fabric.Triangle({ ...options, width: 100, height: 100 });
+    } else if (type === 'line') {
+      shape = new fabric.Line([100, 100, 200, 100], {
         stroke: currentColor,
         strokeWidth: strokeWidth
       });
@@ -120,6 +138,8 @@ const Canvas = () => {
 
     if (shape) {
       canvas.add(shape);
+      canvas.setActiveObject(shape);
+      canvas.renderAll();
     }
   };
 
@@ -130,15 +150,19 @@ const Canvas = () => {
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-    </div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
   }
 
   if (!board) {
-    return <div className="min-h-screen flex items-center justify-center">
-      <Button onClick={() => navigate('/dashboard')}>Powrót</Button>
-    </div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Button onClick={() => navigate('/dashboard')}>Powrót</Button>
+      </div>
+    );
   }
 
   return (
@@ -146,7 +170,9 @@ const Canvas = () => {
       {/* Header */}
       <header className="bg-white border-b px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="secondary" onClick={() => navigate('/dashboard')}>← Powrót</Button>
+          <Button variant="secondary" onClick={() => navigate('/dashboard')}>
+            ← Powrót
+          </Button>
           <h1 className="text-lg font-semibold">{board.title}</h1>
         </div>
         <div className="flex gap-2">
@@ -156,92 +182,123 @@ const Canvas = () => {
         </div>
       </header>
 
-      <div className="flex-1 flex">
-        {/* Simple Toolbar */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Toolbar */}
         <div className="w-16 bg-white border-r flex flex-col items-center py-4 gap-2">
           <button
             onClick={() => setCurrentTool('select')}
-            className={`w-12 h-12 rounded flex items-center justify-center ${currentTool === 'select' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
-            title="Zaznacz"
+            className={`w-12 h-12 rounded flex items-center justify-center text-xl ${
+              currentTool === 'select' ? 'bg-blue-500 text-white' : 'bg-gray-200 hover:bg-gray-300'
+            }`}
+            title="Zaznacz (S)"
           >
             ↖️
           </button>
           <button
             onClick={() => setCurrentTool('pencil')}
-            className={`w-12 h-12 rounded flex items-center justify-center ${currentTool === 'pencil' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
-            title="Ołówek"
+            className={`w-12 h-12 rounded flex items-center justify-center text-xl ${
+              currentTool === 'pencil' ? 'bg-blue-500 text-white' : 'bg-gray-200 hover:bg-gray-300'
+            }`}
+            title="Ołówek (P)"
           >
             ✏️
           </button>
           <button
             onClick={() => setCurrentTool('eraser')}
-            className={`w-12 h-12 rounded flex items-center justify-center ${currentTool === 'eraser' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
-            title="Gumka"
+            className={`w-12 h-12 rounded flex items-center justify-center text-xl ${
+              currentTool === 'eraser' ? 'bg-blue-500 text-white' : 'bg-gray-200 hover:bg-gray-300'
+            }`}
+            title="Gumka (E)"
           >
             🧹
           </button>
+
           <div className="w-10 h-px bg-gray-300 my-2"></div>
+
+          <button
+            onClick={() => addShape('line')}
+            className="w-12 h-12 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xl"
+            title="Linia"
+          >
+            📏
+          </button>
           <button
             onClick={() => addShape('rectangle')}
-            className="w-12 h-12 rounded bg-gray-200 flex items-center justify-center"
+            className="w-12 h-12 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xl"
             title="Prostokąt"
           >
             ⬜
           </button>
           <button
             onClick={() => addShape('circle')}
-            className="w-12 h-12 rounded bg-gray-200 flex items-center justify-center"
+            className="w-12 h-12 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xl"
             title="Koło"
           >
             ⭕
           </button>
+          <button
+            onClick={() => addShape('triangle')}
+            className="w-12 h-12 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xl"
+            title="Trójkąt"
+          >
+            🔺
+          </button>
         </div>
 
-        {/* Canvas */}
-        <div className="flex-1 p-4 overflow-auto">
-          <canvas ref={canvasRef} className="border border-gray-300 shadow-lg" />
+        {/* Canvas Container */}
+        <div className="flex-1 p-4 overflow-auto bg-neutral-100">
+          <div
+            ref={canvasContainerRef}
+            className="inline-block border-2 border-gray-300 shadow-lg"
+            style={{ backgroundColor: 'white' }}
+          />
         </div>
 
-        {/* Simple Sidebar */}
-        <div className="w-64 bg-white border-l p-4">
-          <h3 className="font-semibold mb-4">Ustawienia</h3>
+        {/* Sidebar */}
+        <div className="w-64 bg-white border-l p-4 overflow-y-auto">
+          <h3 className="font-semibold mb-4">Ustawienia narzędzia</h3>
 
-          <div className="mb-4">
-            <label className="block text-sm mb-2">Kolor</label>
+          <div className="mb-6">
+            <label className="block text-sm font-medium mb-2">
+              Kolor
+            </label>
             <input
               type="color"
               value={currentColor}
               onChange={(e) => setCurrentColor(e.target.value)}
-              className="w-full h-10 rounded cursor-pointer"
+              className="w-full h-12 rounded border cursor-pointer"
             />
+            <p className="text-xs text-gray-500 mt-1 text-center">{currentColor}</p>
           </div>
 
-          <div className="mb-4">
-            <label className="block text-sm mb-2">Grubość: {strokeWidth}px</label>
+          <div className="mb-6">
+            <label className="block text-sm font-medium mb-2">
+              Grubość: {strokeWidth}px
+            </label>
             <input
               type="range"
               min="1"
-              max="20"
+              max="50"
               value={strokeWidth}
               onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
               className="w-full"
             />
           </div>
 
-          <div className="mt-6 p-3 bg-blue-50 rounded text-sm">
-            <p className="font-semibold mb-2">💡 Jak używać:</p>
+          <div className="mt-8 p-3 bg-blue-50 rounded text-sm">
+            <p className="font-semibold mb-2">💡 Skróty:</p>
             <ul className="text-xs space-y-1">
-              <li>1. Wybierz narzędzie</li>
-              <li>2. Wybierz kolor</li>
-              <li>3. Rysuj na białym obszarze!</li>
-              <li>4. Siatka pomaga w rysowaniu</li>
+              <li>S - Zaznacz</li>
+              <li>P - Ołówek</li>
+              <li>E - Gumka</li>
+              <li>Siatka: 20px</li>
             </ul>
           </div>
         </div>
       </div>
 
       <div className="bg-white border-t px-4 py-2 text-sm text-gray-600">
-        Prosty tryb rysowania - siatka 20px
+        Fabric.js Canvas - Siatka 20px - Wersja z zaawansowanymi funkcjami
       </div>
     </div>
   );
