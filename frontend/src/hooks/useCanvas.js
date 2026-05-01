@@ -18,37 +18,62 @@ export const useCanvas = ({
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    const fabricCanvas = new fabric.Canvas(canvasRef.current, {
-      width: window.innerWidth - 350, // Account for toolbar and sidebar
-      height: window.innerHeight - 120, // Account for header and footer
-      backgroundColor: '#FFFFFF',
-      isDrawingMode: false,
-    });
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(() => {
+      if (!canvasRef.current) return;
 
-    fabricCanvasRef.current = fabricCanvas;
-    setCanvas(fabricCanvas);
-
-    // Load initial data if provided
-    if (initialData && initialData.objects) {
-      fabricCanvas.loadFromJSON(initialData, () => {
-        fabricCanvas.renderAll();
+      const fabricCanvas = new fabric.Canvas(canvasRef.current, {
+        width: window.innerWidth - 350, // Account for toolbar and sidebar
+        height: window.innerHeight - 120, // Account for header and footer
+        backgroundColor: '#FFFFFF',
+        isDrawingMode: false,
       });
-    }
 
-    // Handle window resize
-    const handleResize = () => {
-      fabricCanvas.setWidth(window.innerWidth - 350);
-      fabricCanvas.setHeight(window.innerHeight - 120);
-      fabricCanvas.renderAll();
-    };
+      fabricCanvasRef.current = fabricCanvas;
+      setCanvas(fabricCanvas);
 
-    window.addEventListener('resize', handleResize);
+      // Load initial data if provided
+      if (initialData && initialData.objects) {
+        try {
+          fabricCanvas.loadFromJSON(initialData, () => {
+            fabricCanvas.renderAll();
+          });
+        } catch (error) {
+          console.error('Failed to load canvas data:', error);
+        }
+      }
+
+      // Handle window resize
+      const handleResize = () => {
+        fabricCanvas.setWidth(window.innerWidth - 350);
+        fabricCanvas.setHeight(window.innerHeight - 120);
+        fabricCanvas.renderAll();
+      };
+
+      window.addEventListener('resize', handleResize);
+    }, 100);
 
     return () => {
-      window.removeEventListener('resize', handleResize);
-      fabricCanvas.dispose();
+      clearTimeout(timer);
+      if (fabricCanvasRef.current) {
+        window.removeEventListener('resize', () => {});
+        fabricCanvasRef.current.dispose();
+      }
     };
-  }, [initialData]);
+  }, []);
+
+  // Load initial data when canvas is ready
+  useEffect(() => {
+    if (!canvas || !initialData || !initialData.objects) return;
+
+    try {
+      canvas.loadFromJSON(initialData, () => {
+        canvas.renderAll();
+      });
+    } catch (error) {
+      console.error('Failed to load initial canvas data:', error);
+    }
+  }, [canvas, initialData]);
 
   // Setup drawing tool
   useEffect(() => {
