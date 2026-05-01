@@ -6,6 +6,7 @@ import Register from './components/Auth/Register';
 import Dashboard from './components/Dashboard/Dashboard';
 import Canvas from './components/Canvas/Canvas';
 import SharedBoard from './components/Canvas/SharedBoard';
+import CanvasTest from './components/Canvas/CanvasTest';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -54,6 +55,8 @@ function App() {
       />
 
       <Route path="/shared/:token" element={<SharedBoard />} />
+
+      <Route path="/test-canvas" element={<CanvasTest />} />
 
       <Route path="*" element={<Navigate to="/dashboard" />} />
     </Routes>
