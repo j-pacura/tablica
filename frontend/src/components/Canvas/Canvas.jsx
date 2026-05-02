@@ -14,8 +14,22 @@ const Canvas = () => {
   const [currentTool, setCurrentTool] = useState('pencil');
   const [currentColor, setCurrentColor] = useState('#000000');
   const [strokeWidth, setStrokeWidth] = useState(2);
+  const [opacity, setOpacity] = useState(1);
   const [shareLink, setShareLink] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Keyboard shortcuts preset (1-9)
+  const [toolPresets, setToolPresets] = useState({
+    '1': { tool: 'pen', color: '#000000', width: 2 },
+    '2': { tool: 'pen', color: '#0000FF', width: 2 },
+    '3': { tool: 'pen', color: '#FF0000', width: 2 },
+    '4': { tool: 'pen', color: '#00FF00', width: 2 },
+    '5': { tool: 'highlighter', color: '#FFFF00', width: 20 },
+    '6': { tool: 'pencil', color: '#000000', width: 1 },
+    '7': { tool: 'marker', color: '#FF00FF', width: 5 },
+    '8': { tool: 'eraser', color: '#FFFFFF', width: 10 },
+    '9': { tool: 'select', color: '#000000', width: 2 }
+  });
 
   // Load board
   useEffect(() => {
@@ -100,14 +114,45 @@ const Canvas = () => {
       canvas.selection = true;
     } else if (currentTool === 'eraser') {
       canvas.isDrawingMode = true;
+      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
       canvas.freeDrawingBrush.color = '#FFFFFF';
       canvas.freeDrawingBrush.width = strokeWidth * 2;
-    } else {
+    } else if (currentTool === 'pencil') {
       canvas.isDrawingMode = true;
+      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
       canvas.freeDrawingBrush.color = currentColor;
       canvas.freeDrawingBrush.width = strokeWidth;
+      canvas.freeDrawingBrush.strokeLineCap = 'round';
+      canvas.freeDrawingBrush.opacity = opacity;
+    } else if (currentTool === 'pen') {
+      canvas.isDrawingMode = true;
+      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+      canvas.freeDrawingBrush.color = currentColor;
+      canvas.freeDrawingBrush.width = strokeWidth;
+      canvas.freeDrawingBrush.strokeLineCap = 'round';
+      canvas.freeDrawingBrush.opacity = opacity;
+    } else if (currentTool === 'marker') {
+      canvas.isDrawingMode = true;
+      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+      canvas.freeDrawingBrush.color = currentColor;
+      canvas.freeDrawingBrush.width = strokeWidth * 1.5;
+      canvas.freeDrawingBrush.strokeLineCap = 'round';
+      canvas.freeDrawingBrush.opacity = opacity;
+    } else if (currentTool === 'highlighter') {
+      canvas.isDrawingMode = true;
+      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+      canvas.freeDrawingBrush.color = currentColor;
+      canvas.freeDrawingBrush.width = strokeWidth * 3;
+      canvas.freeDrawingBrush.strokeLineCap = 'square';
+      canvas.freeDrawingBrush.opacity = 0.3; // Highlighter always semi-transparent
+    } else {
+      canvas.isDrawingMode = true;
+      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+      canvas.freeDrawingBrush.color = currentColor;
+      canvas.freeDrawingBrush.width = strokeWidth;
+      canvas.freeDrawingBrush.opacity = opacity;
     }
-  }, [currentTool, currentColor, strokeWidth]);
+  }, [currentTool, currentColor, strokeWidth, opacity]);
 
   // Add shape
   const addShape = (type) => {
