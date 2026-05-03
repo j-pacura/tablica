@@ -1,8 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { fabric } from 'fabric';
+import * as pdfjsLib from 'pdfjs-dist';
 import { boardsAPI } from '../../services/api';
 import Button from '../UI/Button';
+
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 const Canvas = () => {
   const { boardId } = useParams();
@@ -24,6 +28,13 @@ const Canvas = () => {
   const [zoom, setZoom] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0 });
+
+  // PDF pages state (variant A - slide navigation)
+  const [pdfPages, setPdfPages] = useState([]); // Array of {pageNum, imageData, canvasData}
+  const [currentPage, setCurrentPage] = useState(0); // Current page index
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState([]); // For page selection modal
+  const pdfFileRef = useRef(null);
 
   // Keyboard shortcuts - customizable presets (like Idroo)
   const [toolPresets, setToolPresets] = useState({
@@ -405,6 +416,144 @@ const Canvas = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // PDF Import Functions
+  const handlePdfUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file || file.type !== 'application/pdf') {
+      alert('Proszę wybrać plik PDF');
+      return;
+    }
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const numPages = pdf.numPages;
+
+      // Render all pages as thumbnails for selection
+      const previews = [];
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 0.3 }); // Small preview
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({ canvasContext: context, viewport }).promise;
+
+        previews.push({
+          pageNum,
+          thumbnail: canvas.toDataURL(),
+          selected: true // Default: all pages selected
+        });
+      }
+
+      setPdfPreview(previews);
+      setShowPdfModal(true);
+      pdfFileRef.current = { pdf, arrayBuffer };
+    } catch (error) {
+      console.error('Błąd ładowania PDF:', error);
+      alert('Nie udało się załadować PDF');
+    }
+  };
+
+  const handlePdfPageSelection = async () => {
+    const selectedPages = pdfPreview.filter(p => p.selected);
+    if (selectedPages.length === 0) {
+      alert('Wybierz przynajmniej jedną stronę');
+      return;
+    }
+
+    try {
+      const { pdf } = pdfFileRef.current;
+      const pages = [];
+
+      for (const pageInfo of selectedPages) {
+        const page = await pdf.getPage(pageInfo.pageNum);
+        const viewport = page.getViewport({ scale: 2 }); // High quality
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({ canvasContext: context, viewport }).promise;
+
+        pages.push({
+          pageNum: pageInfo.pageNum,
+          imageData: canvas.toDataURL(),
+          canvasData: null // Will store drawings for this page
+        });
+      }
+
+      setPdfPages(pages);
+      setCurrentPage(0);
+      setShowPdfModal(false);
+
+      // Set first page as background
+      if (pages.length > 0) {
+        setPageBackground(0, pages);
+      }
+    } catch (error) {
+      console.error('Błąd renderowania stron PDF:', error);
+      alert('Nie udało się załadować wybranych stron');
+    }
+  };
+
+  const setPageBackground = (pageIndex, pages = pdfPages) => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || !pages[pageIndex]) return;
+
+    // Save current page canvas data before switching
+    if (pdfPages.length > 0 && currentPage >= 0) {
+      const updatedPages = [...pdfPages];
+      updatedPages[currentPage] = {
+        ...updatedPages[currentPage],
+        canvasData: canvas.toJSON(['isGrid', 'excludeFromExport'])
+      };
+      setPdfPages(updatedPages);
+    }
+
+    // Load new page
+    const pageData = pages[pageIndex];
+
+    // Clear canvas (keep grid)
+    const objects = canvas.getObjects();
+    objects.forEach(obj => {
+      if (!obj.isGrid) {
+        canvas.remove(obj);
+      }
+    });
+
+    // Set PDF page as background image
+    fabric.Image.fromURL(pageData.imageData, (img) => {
+      canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
+        scaleX: canvas.width / img.width,
+        scaleY: canvas.height / img.height
+      });
+
+      // Load saved drawings for this page
+      if (pageData.canvasData) {
+        canvas.loadFromJSON(pageData.canvasData, () => {
+          // Re-add grid after loading
+          if (canvas.drawGrid) canvas.drawGrid(zoom);
+          canvas.renderAll();
+        });
+      }
+    });
+  };
+
+  const handlePageNavigation = (direction) => {
+    if (pdfPages.length === 0) return;
+
+    const newPage = currentPage + direction;
+    if (newPage < 0 || newPage >= pdfPages.length) return;
+
+    setCurrentPage(newPage);
+    setPageBackground(newPage);
+  };
+
   // Zoom controls
   const handleZoomIn = () => {
     const canvas = fabricCanvasRef.current;
@@ -476,6 +625,31 @@ const Canvas = () => {
           <h1 className="text-lg font-semibold">{board.title}</h1>
         </div>
         <div className="flex gap-2 items-center">
+          {/* PDF Page Navigation */}
+          {pdfPages.length > 0 && (
+            <div className="flex items-center gap-1 bg-blue-50 rounded px-3 py-1 border border-blue-200">
+              <button
+                onClick={() => handlePageNavigation(-1)}
+                disabled={currentPage === 0}
+                className="w-7 h-7 rounded hover:bg-blue-100 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                title="Poprzednia strona"
+              >
+                ←
+              </button>
+              <span className="text-sm font-medium px-2">
+                {currentPage + 1} / {pdfPages.length}
+              </span>
+              <button
+                onClick={() => handlePageNavigation(1)}
+                disabled={currentPage === pdfPages.length - 1}
+                className="w-7 h-7 rounded hover:bg-blue-100 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                title="Następna strona"
+              >
+                →
+              </button>
+            </div>
+          )}
+
           {/* Zoom controls */}
           <div className="flex items-center gap-1 bg-gray-100 rounded px-2 py-1">
             <button
@@ -499,6 +673,22 @@ const Canvas = () => {
             >
               +
             </button>
+          </div>
+
+          {/* PDF Import Button */}
+          <div className="relative">
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={handlePdfUpload}
+              className="hidden"
+              id="pdf-upload"
+            />
+            <label htmlFor="pdf-upload">
+              <Button variant="secondary" as="span" className="cursor-pointer">
+                📄 Import PDF
+              </Button>
+            </label>
           </div>
 
           <Button variant="secondary" onClick={handleCopyLink}>
@@ -725,7 +915,72 @@ const Canvas = () => {
 
       <div className="bg-white border-t px-4 py-2 text-sm text-gray-600">
         {currentTool} | Zoom: {Math.round(zoom * 100)}% | Scroll: zoom | Shift+przeciągnij: pan | Skróty 1-9
+        {pdfPages.length > 0 && ` | PDF: Strona ${currentPage + 1}/${pdfPages.length}`}
       </div>
+
+      {/* PDF Page Selection Modal */}
+      {showPdfModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl max-h-[80vh] overflow-auto">
+            <h2 className="text-xl font-bold mb-4">Wybierz strony PDF do importu</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Odznacz niepotrzebne strony (np. strony tytułowe). Wybrane strony zostaną dodane jako slajdy.
+            </p>
+
+            <div className="grid grid-cols-4 gap-4 mb-6">
+              {pdfPreview.map((page, idx) => (
+                <div
+                  key={idx}
+                  className={`border-2 rounded p-2 cursor-pointer transition ${
+                    page.selected ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+                  }`}
+                  onClick={() => {
+                    const updated = [...pdfPreview];
+                    updated[idx].selected = !updated[idx].selected;
+                    setPdfPreview(updated);
+                  }}
+                >
+                  <img
+                    src={page.thumbnail}
+                    alt={`Strona ${page.pageNum}`}
+                    className="w-full h-auto mb-2"
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Str. {page.pageNum}</span>
+                    <input
+                      type="checkbox"
+                      checked={page.selected}
+                      onChange={() => {}}
+                      className="w-4 h-4"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-between items-center">
+              <button
+                onClick={() => {
+                  const allSelected = pdfPreview.every(p => p.selected);
+                  setPdfPreview(pdfPreview.map(p => ({ ...p, selected: !allSelected })));
+                }}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                {pdfPreview.every(p => p.selected) ? 'Odznacz wszystkie' : 'Zaznacz wszystkie'}
+              </button>
+
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => setShowPdfModal(false)}>
+                  Anuluj
+                </Button>
+                <Button onClick={handlePdfPageSelection}>
+                  Importuj wybrane ({pdfPreview.filter(p => p.selected).length})
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
