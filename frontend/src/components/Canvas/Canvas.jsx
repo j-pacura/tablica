@@ -20,6 +20,11 @@ const Canvas = () => {
   const [drawingShape, setDrawingShape] = useState(null);
   const shapeStartPoint = useRef(null);
 
+  // Pan and Zoom state (infinite canvas)
+  const [zoom, setZoom] = useState(1);
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef({ x: 0, y: 0 });
+
   // Keyboard shortcuts - customizable presets (like Idroo)
   const [toolPresets, setToolPresets] = useState({
     '1': { tool: 'pen', color: '#000000', width: 2, opacity: 1 },
@@ -49,7 +54,7 @@ const Canvas = () => {
     loadBoard();
   }, [boardId]);
 
-  // Initialize Fabric.js canvas
+  // Initialize Fabric.js canvas (infinite canvas)
   useEffect(() => {
     if (!board || !canvasContainerRef.current || fabricCanvasRef.current) return;
 
@@ -57,17 +62,21 @@ const Canvas = () => {
     canvasEl.id = 'fabric-canvas';
     canvasContainerRef.current.appendChild(canvasEl);
 
+    // Larger canvas for "infinite" effect (4x viewport)
+    const canvasWidth = 5600;  // 4x 1400
+    const canvasHeight = 3200; // 4x 800
+
     const canvas = new fabric.Canvas('fabric-canvas', {
-      width: 1400,
-      height: 800,
+      width: canvasWidth,
+      height: canvasHeight,
       backgroundColor: '#FFFFFF',
       isDrawingMode: true
     });
 
-    // Add grid
+    // Add grid across entire canvas
     const gridSize = 20;
-    for (let i = 0; i <= 1400 / gridSize; i++) {
-      canvas.add(new fabric.Line([i * gridSize, 0, i * gridSize, 800], {
+    for (let i = 0; i <= canvasWidth / gridSize; i++) {
+      canvas.add(new fabric.Line([i * gridSize, 0, i * gridSize, canvasHeight], {
         stroke: '#e0e0e0',
         strokeWidth: 1,
         selectable: false,
@@ -75,8 +84,8 @@ const Canvas = () => {
         objectCaching: false
       }));
     }
-    for (let i = 0; i <= 800 / gridSize; i++) {
-      canvas.add(new fabric.Line([0, i * gridSize, 1400, i * gridSize], {
+    for (let i = 0; i <= canvasHeight / gridSize; i++) {
+      canvas.add(new fabric.Line([0, i * gridSize, canvasWidth, i * gridSize], {
         stroke: '#e0e0e0',
         strokeWidth: 1,
         selectable: false,
@@ -89,6 +98,53 @@ const Canvas = () => {
     canvas.freeDrawingBrush.color = currentColor;
     canvas.freeDrawingBrush.width = strokeWidth;
 
+    // Zoom with mouse wheel (Ctrl+scroll)
+    canvas.on('mouse:wheel', (opt) => {
+      const delta = opt.e.deltaY;
+      let newZoom = canvas.getZoom();
+      newZoom *= 0.999 ** delta;
+
+      // Limit zoom range
+      if (newZoom > 5) newZoom = 5;
+      if (newZoom < 0.1) newZoom = 0.1;
+
+      canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, newZoom);
+      setZoom(newZoom);
+      opt.e.preventDefault();
+      opt.e.stopPropagation();
+    });
+
+    // Pan with Space+drag or middle mouse button
+    canvas.on('mouse:down', (opt) => {
+      const evt = opt.e;
+
+      // Middle mouse button or Space key
+      if (evt.button === 1 || (evt.button === 0 && evt.shiftKey)) {
+        setIsPanning(true);
+        canvas.selection = false;
+        canvas.isDrawingMode = false;
+        panStart.current = { x: evt.clientX, y: evt.clientY };
+      }
+    });
+
+    canvas.on('mouse:move', (opt) => {
+      if (isPanning) {
+        const evt = opt.e;
+        const vpt = canvas.viewportTransform;
+        vpt[4] += evt.clientX - panStart.current.x;
+        vpt[5] += evt.clientY - panStart.current.y;
+        canvas.requestRenderAll();
+        panStart.current = { x: evt.clientX, y: evt.clientY };
+      }
+    });
+
+    canvas.on('mouse:up', () => {
+      if (isPanning) {
+        setIsPanning(false);
+        canvas.setViewportTransform(canvas.viewportTransform);
+      }
+    });
+
     fabricCanvasRef.current = canvas;
 
     return () => {
@@ -97,7 +153,7 @@ const Canvas = () => {
         fabricCanvasRef.current = null;
       }
     };
-  }, [board]);
+  }, [board, isPanning]);
 
   // Helper function to convert hex color to RGBA with opacity
   const hexToRgba = (hex, alpha) => {
@@ -284,6 +340,33 @@ const Canvas = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Zoom controls
+  const handleZoomIn = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    let newZoom = canvas.getZoom() * 1.2;
+    if (newZoom > 5) newZoom = 5;
+    canvas.setZoom(newZoom);
+    setZoom(newZoom);
+  };
+
+  const handleZoomOut = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    let newZoom = canvas.getZoom() / 1.2;
+    if (newZoom < 0.1) newZoom = 0.1;
+    canvas.setZoom(newZoom);
+    setZoom(newZoom);
+  };
+
+  const handleZoomReset = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.setZoom(1);
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    setZoom(1);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -309,7 +392,32 @@ const Canvas = () => {
           </Button>
           <h1 className="text-lg font-semibold">{board.title}</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* Zoom controls */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded px-2 py-1">
+            <button
+              onClick={handleZoomOut}
+              className="w-8 h-8 rounded hover:bg-gray-200 flex items-center justify-center text-lg font-bold"
+              title="Zoom out"
+            >
+              −
+            </button>
+            <button
+              onClick={handleZoomReset}
+              className="px-2 h-8 rounded hover:bg-gray-200 flex items-center justify-center text-sm font-medium min-w-[60px]"
+              title="Reset zoom (100%)"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              onClick={handleZoomIn}
+              className="w-8 h-8 rounded hover:bg-gray-200 flex items-center justify-center text-lg font-bold"
+              title="Zoom in"
+            >
+              +
+            </button>
+          </div>
+
           <Button variant="secondary" onClick={handleCopyLink}>
             {copied ? '✓ Skopiowano' : '🔗 Udostępnij'}
           </Button>
@@ -518,11 +626,21 @@ const Canvas = () => {
             <p className="font-semibold mb-2">✨ Kształty:</p>
             <p className="text-xs">Kliknij kształt, potem <b>kliknij i przeciągnij</b> na tablicy!</p>
           </div>
+
+          <div className="mt-4 p-3 bg-purple-50 rounded text-sm">
+            <p className="font-semibold mb-2">🔍 Nieskończony canvas:</p>
+            <div className="text-xs space-y-1">
+              <div><b>Scroll myszką:</b> Zoom in/out</div>
+              <div><b>Shift + przeciągnij:</b> Przesuwanie (pan)</div>
+              <div><b>Przyciski +/−:</b> Zoom</div>
+              <div className="text-gray-600 mt-1">Canvas 5600x3200px (4x ekran)</div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="bg-white border-t px-4 py-2 text-sm text-gray-600">
-        Fabric.js Canvas - Siatka 20px - {currentTool} - Skróty 1-9
+        {currentTool} | Zoom: {Math.round(zoom * 100)}% | Scroll: zoom | Shift+przeciągnij: pan | Skróty 1-9
       </div>
     </div>
   );
