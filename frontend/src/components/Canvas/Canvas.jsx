@@ -20,18 +20,18 @@ const Canvas = () => {
   const [drawingShape, setDrawingShape] = useState(null);
   const shapeStartPoint = useRef(null);
 
-  // Keyboard shortcuts preset (1-9)
-  const toolPresets = {
-    '1': { tool: 'pen', color: '#000000', width: 2 },
-    '2': { tool: 'pen', color: '#0000FF', width: 2 },
-    '3': { tool: 'pen', color: '#FF0000', width: 2 },
-    '4': { tool: 'pen', color: '#00FF00', width: 2 },
-    '5': { tool: 'highlighter', color: '#FFFF00', width: 20 },
-    '6': { tool: 'pencil', color: '#000000', width: 1 },
-    '7': { tool: 'marker', color: '#FF00FF', width: 5 },
-    '8': { tool: 'eraser', color: '#FFFFFF', width: 10 },
-    '9': { tool: 'select', color: '#000000', width: 2 }
-  };
+  // Keyboard shortcuts - customizable presets (like Idroo)
+  const [toolPresets, setToolPresets] = useState({
+    '1': { tool: 'pen', color: '#000000', width: 2, opacity: 1 },
+    '2': { tool: 'pen', color: '#0000FF', width: 2, opacity: 1 },
+    '3': { tool: 'pen', color: '#FF0000', width: 2, opacity: 1 },
+    '4': { tool: 'pen', color: '#00FF00', width: 2, opacity: 1 },
+    '5': { tool: 'highlighter', color: '#FFFF00', width: 20, opacity: 0.3 },
+    '6': { tool: 'pencil', color: '#000000', width: 1, opacity: 1 },
+    '7': { tool: 'marker', color: '#FF00FF', width: 5, opacity: 1 },
+    '8': { tool: 'eraser', color: '#FFFFFF', width: 10, opacity: 1 },
+    '9': { tool: 'select', color: '#000000', width: 2, opacity: 1 }
+  });
 
   // Load board
   useEffect(() => {
@@ -99,6 +99,14 @@ const Canvas = () => {
     };
   }, [board]);
 
+  // Helper function to convert hex color to RGBA with opacity
+  const hexToRgba = (hex, alpha) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
   // Update tool
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
@@ -121,57 +129,70 @@ const Canvas = () => {
     } else if (currentTool === 'pencil') {
       canvas.isDrawingMode = true;
       canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-      canvas.freeDrawingBrush.color = currentColor;
+      canvas.freeDrawingBrush.color = hexToRgba(currentColor, opacity);
       canvas.freeDrawingBrush.width = strokeWidth;
       canvas.freeDrawingBrush.strokeLineCap = 'round';
-      canvas.freeDrawingBrush.opacity = opacity;
     } else if (currentTool === 'pen') {
       canvas.isDrawingMode = true;
       canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-      canvas.freeDrawingBrush.color = currentColor;
+      canvas.freeDrawingBrush.color = hexToRgba(currentColor, opacity);
       canvas.freeDrawingBrush.width = strokeWidth;
       canvas.freeDrawingBrush.strokeLineCap = 'round';
-      canvas.freeDrawingBrush.opacity = opacity;
     } else if (currentTool === 'marker') {
       canvas.isDrawingMode = true;
       canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-      canvas.freeDrawingBrush.color = currentColor;
+      canvas.freeDrawingBrush.color = hexToRgba(currentColor, opacity);
       canvas.freeDrawingBrush.width = strokeWidth * 1.5;
       canvas.freeDrawingBrush.strokeLineCap = 'round';
-      canvas.freeDrawingBrush.opacity = opacity;
     } else if (currentTool === 'highlighter') {
       canvas.isDrawingMode = true;
       canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-      canvas.freeDrawingBrush.color = currentColor;
+      canvas.freeDrawingBrush.color = hexToRgba(currentColor, 0.3);
       canvas.freeDrawingBrush.width = strokeWidth * 3;
       canvas.freeDrawingBrush.strokeLineCap = 'square';
-      canvas.freeDrawingBrush.opacity = 0.3;
     } else {
       canvas.isDrawingMode = true;
       canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-      canvas.freeDrawingBrush.color = currentColor;
+      canvas.freeDrawingBrush.color = hexToRgba(currentColor, opacity);
       canvas.freeDrawingBrush.width = strokeWidth;
-      canvas.freeDrawingBrush.opacity = opacity;
     }
   }, [currentTool, currentColor, strokeWidth, opacity]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts (like Idroo: number=load, Ctrl+number=save)
   useEffect(() => {
     const handleKeyPress = (e) => {
       // Number keys 1-9
       if (e.key >= '1' && e.key <= '9') {
-        const preset = toolPresets[e.key];
-        if (preset) {
-          setCurrentTool(preset.tool);
-          setCurrentColor(preset.color);
-          setStrokeWidth(preset.width);
+        e.preventDefault();
+
+        if (e.ctrlKey || e.metaKey) {
+          // Ctrl+Number: SAVE current settings to this slot
+          setToolPresets(prev => ({
+            ...prev,
+            [e.key]: {
+              tool: currentTool,
+              color: currentColor,
+              width: strokeWidth,
+              opacity: opacity
+            }
+          }));
+          console.log(`Zapisano preset ${e.key}: ${currentTool}, ${currentColor}, ${strokeWidth}px, ${Math.round(opacity * 100)}%`);
+        } else {
+          // Number: LOAD preset from this slot
+          const preset = toolPresets[e.key];
+          if (preset) {
+            setCurrentTool(preset.tool);
+            setCurrentColor(preset.color);
+            setStrokeWidth(preset.width);
+            setOpacity(preset.opacity);
+          }
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, []);
+  }, [currentTool, currentColor, strokeWidth, opacity, toolPresets]);
 
   // Start drawing shape (click-drag-release)
   const startDrawingShape = (shapeType) => {
@@ -469,17 +490,27 @@ const Canvas = () => {
           )}
 
           <div className="mt-8 p-3 bg-blue-50 rounded text-sm">
-            <p className="font-semibold mb-2">⌨️ Skróty klawiszowe:</p>
-            <div className="text-xs space-y-1">
-              <div className="flex justify-between"><span>1</span><span>Czarne pióro</span></div>
-              <div className="flex justify-between"><span>2</span><span>Niebieskie pióro</span></div>
-              <div className="flex justify-between"><span>3</span><span>Czerwone pióro</span></div>
-              <div className="flex justify-between"><span>4</span><span>Zielone pióro</span></div>
-              <div className="flex justify-between"><span>5</span><span>Żółty zakreślacz</span></div>
-              <div className="flex justify-between"><span>6</span><span>Ołówek</span></div>
-              <div className="flex justify-between"><span>7</span><span>Marker</span></div>
-              <div className="flex justify-between"><span>8</span><span>Gumka</span></div>
-              <div className="flex justify-between"><span>9</span><span>Zaznacz</span></div>
+            <p className="font-semibold mb-2">⌨️ Skróty klawiszowe (jak Idroo):</p>
+            <div className="text-xs space-y-2">
+              <div className="p-2 bg-white rounded">
+                <p className="font-semibold mb-1">1-9: Załaduj preset</p>
+                <p className="text-gray-600">Przywołuje zapisane ustawienia</p>
+              </div>
+              <div className="p-2 bg-white rounded">
+                <p className="font-semibold mb-1">Ctrl+1-9: Zapisz preset</p>
+                <p className="text-gray-600">Zapisuje aktualne ustawienia (kolor, grubość, opacity)</p>
+              </div>
+            </div>
+            <div className="mt-3 text-xs text-gray-600">
+              <p className="font-semibold mb-1">Domyślne presety:</p>
+              <div className="space-y-0.5">
+                <div>1-4: Kolorowe pióra</div>
+                <div>5: Żółty zakreślacz</div>
+                <div>6: Ołówek</div>
+                <div>7: Marker</div>
+                <div>8: Gumka</div>
+                <div>9: Zaznacz</div>
+              </div>
             </div>
           </div>
 
