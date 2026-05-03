@@ -73,26 +73,55 @@ const Canvas = () => {
       isDrawingMode: true
     });
 
-    // Add grid across entire canvas
-    const gridSize = 20;
-    for (let i = 0; i <= canvasWidth / gridSize; i++) {
-      canvas.add(new fabric.Line([i * gridSize, 0, i * gridSize, canvasHeight], {
-        stroke: '#e0e0e0',
-        strokeWidth: 1,
-        selectable: false,
-        evented: false,
-        objectCaching: false
-      }));
-    }
-    for (let i = 0; i <= canvasHeight / gridSize; i++) {
-      canvas.add(new fabric.Line([0, i * gridSize, canvasWidth, i * gridSize], {
-        stroke: '#e0e0e0',
-        strokeWidth: 1,
-        selectable: false,
-        evented: false,
-        objectCaching: false
-      }));
-    }
+    // Add adaptive grid (changes with zoom) - marked as background
+    const drawGrid = (zoomLevel) => {
+      // Remove old grid
+      const objects = canvas.getObjects();
+      objects.forEach(obj => {
+        if (obj.isGrid) {
+          canvas.remove(obj);
+        }
+      });
+
+      // Determine grid size based on zoom
+      let gridSize = 20;
+      if (zoomLevel > 2) {
+        gridSize = 10; // Finer grid when zoomed in
+      } else if (zoomLevel > 4) {
+        gridSize = 5;  // Even finer
+      }
+
+      // Draw grid lines
+      for (let i = 0; i <= canvasWidth / gridSize; i++) {
+        const line = new fabric.Line([i * gridSize, 0, i * gridSize, canvasHeight], {
+          stroke: '#e0e0e0',
+          strokeWidth: 1 / zoomLevel, // Thinner lines when zoomed
+          selectable: false,
+          evented: false,
+          objectCaching: false,
+          isGrid: true, // Mark as grid for identification
+          excludeFromExport: true
+        });
+        canvas.add(line);
+        canvas.sendToBack(line); // Always keep grid in back
+      }
+      for (let i = 0; i <= canvasHeight / gridSize; i++) {
+        const line = new fabric.Line([0, i * gridSize, canvasWidth, i * gridSize], {
+          stroke: '#e0e0e0',
+          strokeWidth: 1 / zoomLevel,
+          selectable: false,
+          evented: false,
+          objectCaching: false,
+          isGrid: true,
+          excludeFromExport: true
+        });
+        canvas.add(line);
+        canvas.sendToBack(line);
+      }
+    };
+
+    drawGrid(1); // Initial grid at 100% zoom
+    canvas.drawGrid = drawGrid; // Expose for zoom updates
 
     canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
     canvas.freeDrawingBrush.color = currentColor;
@@ -102,6 +131,7 @@ const Canvas = () => {
     canvas.on('mouse:wheel', (opt) => {
       const delta = opt.e.deltaY;
       let newZoom = canvas.getZoom();
+      const oldZoom = newZoom;
       newZoom *= 0.999 ** delta;
 
       // Limit zoom range
@@ -110,6 +140,13 @@ const Canvas = () => {
 
       canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, newZoom);
       setZoom(newZoom);
+
+      // Redraw grid if zoom crossed threshold
+      if ((oldZoom < 2 && newZoom >= 2) || (oldZoom >= 2 && newZoom < 2) ||
+          (oldZoom < 4 && newZoom >= 4) || (oldZoom >= 4 && newZoom < 4)) {
+        if (canvas.drawGrid) canvas.drawGrid(newZoom);
+      }
+
       opt.e.preventDefault();
       opt.e.stopPropagation();
     });
@@ -178,10 +215,38 @@ const Canvas = () => {
       canvas.isDrawingMode = false;
       canvas.selection = true;
     } else if (currentTool === 'eraser') {
-      canvas.isDrawingMode = true;
-      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-      canvas.freeDrawingBrush.color = '#FFFFFF';
-      canvas.freeDrawingBrush.width = strokeWidth * 2;
+      // Use EraserBrush if available (Fabric.js 5.x+), otherwise use object removal
+      if (fabric.EraserBrush) {
+        canvas.isDrawingMode = true;
+        canvas.freeDrawingBrush = new fabric.EraserBrush(canvas);
+        canvas.freeDrawingBrush.width = strokeWidth * 2;
+      } else {
+        // Fallback: manual erasing by detecting and removing objects
+        canvas.isDrawingMode = false;
+        canvas.selection = false;
+
+        let isErasing = false;
+        const eraseObject = (opt) => {
+          if (!isErasing) return;
+          const pointer = canvas.getPointer(opt.e);
+          const objects = canvas.getObjects();
+
+          for (let i = objects.length - 1; i >= 0; i--) {
+            const obj = objects[i];
+            // Don't erase grid lines
+            if (obj.isGrid) continue;
+
+            if (obj.containsPoint(pointer)) {
+              canvas.remove(obj);
+              break;
+            }
+          }
+        };
+
+        canvas.on('mouse:down', () => { isErasing = true; });
+        canvas.on('mouse:move', eraseObject);
+        canvas.on('mouse:up', () => { isErasing = false; });
+      }
     } else if (currentTool === 'pencil') {
       canvas.isDrawingMode = true;
       canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
@@ -344,27 +409,45 @@ const Canvas = () => {
   const handleZoomIn = () => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
-    let newZoom = canvas.getZoom() * 1.2;
+    const oldZoom = canvas.getZoom();
+    let newZoom = oldZoom * 1.2;
     if (newZoom > 5) newZoom = 5;
     canvas.setZoom(newZoom);
     setZoom(newZoom);
+
+    // Redraw grid if crossed threshold
+    if ((oldZoom < 2 && newZoom >= 2) || (oldZoom < 4 && newZoom >= 4)) {
+      if (canvas.drawGrid) canvas.drawGrid(newZoom);
+    }
   };
 
   const handleZoomOut = () => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
-    let newZoom = canvas.getZoom() / 1.2;
+    const oldZoom = canvas.getZoom();
+    let newZoom = oldZoom / 1.2;
     if (newZoom < 0.1) newZoom = 0.1;
     canvas.setZoom(newZoom);
     setZoom(newZoom);
+
+    // Redraw grid if crossed threshold
+    if ((oldZoom >= 2 && newZoom < 2) || (oldZoom >= 4 && newZoom < 4)) {
+      if (canvas.drawGrid) canvas.drawGrid(newZoom);
+    }
   };
 
   const handleZoomReset = () => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
+    const oldZoom = canvas.getZoom();
     canvas.setZoom(1);
     canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
     setZoom(1);
+
+    // Redraw grid
+    if (oldZoom !== 1 && canvas.drawGrid) {
+      canvas.drawGrid(1);
+    }
   };
 
   if (loading) {
@@ -633,6 +716,7 @@ const Canvas = () => {
               <div><b>Scroll myszką:</b> Zoom in/out</div>
               <div><b>Shift + przeciągnij:</b> Przesuwanie (pan)</div>
               <div><b>Przyciski +/−:</b> Zoom</div>
+              <div className="text-green-600 mt-2">✨ Siatka adaptacyjna - więcej kratek przy zbliżeniu!</div>
               <div className="text-gray-600 mt-1">Canvas 5600x3200px (4x ekran)</div>
             </div>
           </div>
