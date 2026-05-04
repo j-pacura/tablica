@@ -36,6 +36,20 @@ const Canvas = () => {
   const [pdfPreview, setPdfPreview] = useState([]); // For page selection modal
   const pdfFileRef = useRef(null);
 
+  // Background settings
+  const [backgroundColor, setBackgroundColor] = useState('#FFFFFF');
+  const [gridColor, setGridColor] = useState('#e0e0e0');
+  const [showBackgroundSettings, setShowBackgroundSettings] = useState(false);
+
+  // Background presets
+  const backgroundPresets = [
+    { name: 'Jasne', bg: '#FFFFFF', grid: '#e0e0e0' },
+    { name: 'Ciemne', bg: '#1a1a1a', grid: '#404040' },
+    { name: 'Szafir', bg: '#0f4c81', grid: '#6ba3d0' },
+    { name: 'Morskie', bg: '#2c5f6f', grid: '#7fb3c4' },
+    { name: 'Beż', bg: '#f5f5dc', grid: '#d3d3b5' },
+  ];
+
   // Keyboard shortcuts - customizable presets (like Idroo)
   const [toolPresets, setToolPresets] = useState({
     '1': { tool: 'pen', color: '#000000', width: 2, opacity: 1 },
@@ -85,7 +99,7 @@ const Canvas = () => {
     });
 
     // Add adaptive grid (changes with zoom) - marked as background
-    const drawGrid = (zoomLevel) => {
+    const drawGrid = (zoomLevel, currentGridColor = gridColor) => {
       // Remove old grid
       const objects = canvas.getObjects();
       objects.forEach(obj => {
@@ -94,32 +108,36 @@ const Canvas = () => {
         }
       });
 
-      // Determine grid size based on zoom
+      // Determine grid size based on zoom - FIXED logic
       let gridSize = 20;
-      if (zoomLevel > 2) {
-        gridSize = 10; // Finer grid when zoomed in
-      } else if (zoomLevel > 4) {
-        gridSize = 5;  // Even finer
+      if (zoomLevel >= 4) {
+        gridSize = 5;  // Very fine grid when very zoomed in
+      } else if (zoomLevel >= 2) {
+        gridSize = 10; // Fine grid when zoomed in
       }
 
-      // Draw grid lines
-      for (let i = 0; i <= canvasWidth / gridSize; i++) {
+      // Draw grid lines covering ENTIRE canvas
+      const numVertical = Math.ceil(canvasWidth / gridSize) + 1;
+      const numHorizontal = Math.ceil(canvasHeight / gridSize) + 1;
+
+      for (let i = 0; i < numVertical; i++) {
         const line = new fabric.Line([i * gridSize, 0, i * gridSize, canvasHeight], {
-          stroke: '#e0e0e0',
-          strokeWidth: 1 / zoomLevel, // Thinner lines when zoomed
+          stroke: currentGridColor,
+          strokeWidth: 1,
           selectable: false,
           evented: false,
           objectCaching: false,
-          isGrid: true, // Mark as grid for identification
+          isGrid: true,
           excludeFromExport: true
         });
         canvas.add(line);
-        canvas.sendToBack(line); // Always keep grid in back
+        canvas.sendToBack(line);
       }
-      for (let i = 0; i <= canvasHeight / gridSize; i++) {
+
+      for (let i = 0; i < numHorizontal; i++) {
         const line = new fabric.Line([0, i * gridSize, canvasWidth, i * gridSize], {
-          stroke: '#e0e0e0',
-          strokeWidth: 1 / zoomLevel,
+          stroke: currentGridColor,
+          strokeWidth: 1,
           selectable: false,
           evented: false,
           objectCaching: false,
@@ -131,7 +149,7 @@ const Canvas = () => {
       }
     };
 
-    drawGrid(1); // Initial grid at 100% zoom
+    drawGrid(1, gridColor); // Initial grid at 100% zoom
     canvas.drawGrid = drawGrid; // Expose for zoom updates
 
     canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
@@ -155,7 +173,7 @@ const Canvas = () => {
       // Redraw grid if zoom crossed threshold
       if ((oldZoom < 2 && newZoom >= 2) || (oldZoom >= 2 && newZoom < 2) ||
           (oldZoom < 4 && newZoom >= 4) || (oldZoom >= 4 && newZoom < 4)) {
-        if (canvas.drawGrid) canvas.drawGrid(newZoom);
+        if (canvas.drawGrid) canvas.drawGrid(newZoom, gridColor);
       }
 
       opt.e.preventDefault();
@@ -202,6 +220,19 @@ const Canvas = () => {
       }
     };
   }, [board, isPanning]);
+
+  // Update canvas background when color changes
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+
+    canvas.setBackgroundColor(backgroundColor, canvas.renderAll.bind(canvas));
+
+    // Redraw grid with new color
+    if (canvas.drawGrid) {
+      canvas.drawGrid(zoom, gridColor);
+    }
+  }, [backgroundColor, gridColor]);
 
   // Helper function to convert hex color to RGBA with opacity
   const hexToRgba = (hex, alpha) => {
@@ -566,7 +597,7 @@ const Canvas = () => {
 
     // Redraw grid if crossed threshold
     if ((oldZoom < 2 && newZoom >= 2) || (oldZoom < 4 && newZoom >= 4)) {
-      if (canvas.drawGrid) canvas.drawGrid(newZoom);
+      if (canvas.drawGrid) canvas.drawGrid(newZoom, gridColor);
     }
   };
 
@@ -581,7 +612,7 @@ const Canvas = () => {
 
     // Redraw grid if crossed threshold
     if ((oldZoom >= 2 && newZoom < 2) || (oldZoom >= 4 && newZoom < 4)) {
-      if (canvas.drawGrid) canvas.drawGrid(newZoom);
+      if (canvas.drawGrid) canvas.drawGrid(newZoom, gridColor);
     }
   };
 
@@ -595,7 +626,7 @@ const Canvas = () => {
 
     // Redraw grid
     if (oldZoom !== 1 && canvas.drawGrid) {
-      canvas.drawGrid(1);
+      canvas.drawGrid(1, gridColor);
     }
   };
 
@@ -676,20 +707,23 @@ const Canvas = () => {
           </div>
 
           {/* PDF Import Button */}
-          <div className="relative">
-            <input
-              type="file"
-              accept="application/pdf"
-              onChange={handlePdfUpload}
-              className="hidden"
-              id="pdf-upload"
-            />
-            <label htmlFor="pdf-upload">
-              <Button variant="secondary" as="span" className="cursor-pointer">
-                📄 Import PDF
-              </Button>
-            </label>
-          </div>
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={handlePdfUpload}
+            className="hidden"
+            id="pdf-upload"
+          />
+          <label
+            htmlFor="pdf-upload"
+            className="font-medium py-2 px-4 rounded-lg transition-colors duration-200 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 cursor-pointer inline-block"
+          >
+            📄 Import PDF
+          </label>
+
+          <Button variant="secondary" onClick={() => setShowBackgroundSettings(true)}>
+            🎨 Tło
+          </Button>
 
           <Button variant="secondary" onClick={handleCopyLink}>
             {copied ? '✓ Skopiowano' : '🔗 Udostępnij'}
@@ -977,6 +1011,104 @@ const Canvas = () => {
                   Importuj wybrane ({pdfPreview.filter(p => p.selected).length})
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Background Settings Modal */}
+      {showBackgroundSettings && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl">
+            <h2 className="text-xl font-bold mb-4">Ustawienia tła</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Wybierz preset kolorystyczny lub ustaw własne kolory tła i siatki
+            </p>
+
+            {/* Color Presets */}
+            <div className="mb-6">
+              <label className="block text-sm font-semibold mb-3">Presety kolorów:</label>
+              <div className="grid grid-cols-5 gap-3">
+                {backgroundPresets.map((preset, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setBackgroundColor(preset.bg);
+                      setGridColor(preset.grid);
+                    }}
+                    className="flex flex-col items-center p-3 border-2 rounded-lg hover:border-blue-500 transition"
+                    style={{
+                      borderColor: backgroundColor === preset.bg ? '#3b82f6' : '#d1d5db'
+                    }}
+                  >
+                    <div
+                      className="w-16 h-16 rounded mb-2 border border-gray-300 relative"
+                      style={{ backgroundColor: preset.bg }}
+                    >
+                      <div
+                        className="absolute inset-0 opacity-50"
+                        style={{
+                          backgroundImage: `linear-gradient(${preset.grid} 1px, transparent 1px), linear-gradient(90deg, ${preset.grid} 1px, transparent 1px)`,
+                          backgroundSize: '20px 20px'
+                        }}
+                      />
+                    </div>
+                    <span className="text-xs font-medium">{preset.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom Colors */}
+            <div className="mb-6 grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Kolor tła:</label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="color"
+                    value={backgroundColor}
+                    onChange={(e) => setBackgroundColor(e.target.value)}
+                    className="w-16 h-10 rounded border cursor-pointer"
+                  />
+                  <span className="text-sm font-mono">{backgroundColor}</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Kolor siatki:</label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="color"
+                    value={gridColor}
+                    onChange={(e) => setGridColor(e.target.value)}
+                    className="w-16 h-10 rounded border cursor-pointer"
+                  />
+                  <span className="text-sm font-mono">{gridColor}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div className="mb-6">
+              <label className="block text-sm font-semibold mb-2">Podgląd:</label>
+              <div
+                className="w-full h-32 rounded border-2 border-gray-300 relative"
+                style={{ backgroundColor }}
+              >
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    backgroundImage: `linear-gradient(${gridColor} 1px, transparent 1px), linear-gradient(90deg, ${gridColor} 1px, transparent 1px)`,
+                    backgroundSize: '20px 20px'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Buttons */}
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setShowBackgroundSettings(false)}>
+                Zamknij
+              </Button>
             </div>
           </div>
         </div>
