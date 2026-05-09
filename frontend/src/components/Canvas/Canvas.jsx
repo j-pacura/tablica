@@ -18,7 +18,7 @@ const Canvas = () => {
   const [loading, setLoading] = useState(true);
   const [currentTool, setCurrentTool] = useState('pen');
   const [currentColor, setCurrentColor] = useState('#000000');
-  const [strokeWidth, setStrokeWidth] = useState(2);
+  const [strokeWidth, setStrokeWidth] = useState(3); // Zwiększone z 2 na 3 dla lepszej widoczności
   const [opacity, setOpacity] = useState(1);
   const [shareLink, setShareLink] = useState('');
   const [copied, setCopied] = useState(false);
@@ -36,6 +36,7 @@ const Canvas = () => {
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfPreview, setPdfPreview] = useState([]); // For page selection modal
   const pdfFileRef = useRef(null);
+  const [showGrid, setShowGrid] = useState(true); // Toggle grid visibility
 
   // Background settings
   const [backgroundColor, setBackgroundColor] = useState('#FFFFFF');
@@ -51,17 +52,17 @@ const Canvas = () => {
     { name: 'Beż', bg: '#f5f5dc', grid: '#d3d3b5' },
   ];
 
-  // Keyboard shortcuts - customizable presets (like Idroo)
+  // Keyboard shortcuts - customizable presets (like Idroo) - ZWIĘKSZONE GRUBOŚCI
   const [toolPresets, setToolPresets] = useState({
-    '1': { tool: 'pen', color: '#000000', width: 2, opacity: 1 },
-    '2': { tool: 'pen', color: '#0000FF', width: 2, opacity: 1 },
-    '3': { tool: 'pen', color: '#FF0000', width: 2, opacity: 1 },
-    '4': { tool: 'pen', color: '#00FF00', width: 2, opacity: 1 },
-    '5': { tool: 'highlighter', color: '#FFFF00', width: 20, opacity: 0.3 },
-    '6': { tool: 'pencil', color: '#000000', width: 1, opacity: 1 },
-    '7': { tool: 'marker', color: '#FF00FF', width: 5, opacity: 1 },
-    '8': { tool: 'eraser', color: '#FFFFFF', width: 10, opacity: 1 },
-    '9': { tool: 'select', color: '#000000', width: 2, opacity: 1 }
+    '1': { tool: 'pen', color: '#000000', width: 3, opacity: 1 },
+    '2': { tool: 'pen', color: '#0000FF', width: 3, opacity: 1 },
+    '3': { tool: 'pen', color: '#FF0000', width: 3, opacity: 1 },
+    '4': { tool: 'pen', color: '#00FF00', width: 3, opacity: 1 },
+    '5': { tool: 'highlighter', color: '#FFFF00', width: 24, opacity: 0.3 },
+    '6': { tool: 'pencil', color: '#000000', width: 2, opacity: 1 },
+    '7': { tool: 'marker', color: '#FF00FF', width: 6, opacity: 1 },
+    '8': { tool: 'eraser', color: '#FFFFFF', width: 15, opacity: 1 },
+    '9': { tool: 'select', color: '#000000', width: 3, opacity: 1 }
   });
 
   // Load board
@@ -100,7 +101,7 @@ const Canvas = () => {
     });
 
     // Add adaptive grid (changes with zoom) - marked as background
-    const drawGrid = (zoomLevel, currentGridColor = gridColor) => {
+    const drawGrid = (zoomLevel, currentGridColor = gridColor, visible = showGrid) => {
       // Remove old grid
       const objects = canvas.getObjects();
       objects.forEach(obj => {
@@ -108,6 +109,11 @@ const Canvas = () => {
           canvas.remove(obj);
         }
       });
+
+      // Don't draw grid if hidden or PDF is loaded
+      if (!visible || pdfPages.length > 0) {
+        return;
+      }
 
       // Determine grid size based on zoom - FIXED logic
       let gridSize = 20;
@@ -150,7 +156,7 @@ const Canvas = () => {
       }
     };
 
-    drawGrid(1, gridColor); // Initial grid at 100% zoom
+    drawGrid(1, gridColor, showGrid); // Initial grid at 100% zoom
     canvas.drawGrid = drawGrid; // Expose for zoom updates
 
     canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
@@ -532,13 +538,28 @@ const Canvas = () => {
         pages.push({
           pageNum: pageInfo.pageNum,
           imageData: canvas.toDataURL(),
-          canvasData: null // Will store drawings for this page
+          canvasData: null, // Will store drawings for this page
+          width: viewport.width,
+          height: viewport.height
         });
       }
 
       setPdfPages(pages);
       setCurrentPage(0);
       setShowPdfModal(false);
+
+      // Resize canvas to first page and hide grid
+      const fabricCanvas = fabricCanvasRef.current;
+      if (fabricCanvas && pages.length > 0) {
+        fabricCanvas.setDimensions({
+          width: pages[0].width,
+          height: pages[0].height
+        });
+        // Hide grid when PDF loaded
+        if (fabricCanvas.drawGrid) {
+          fabricCanvas.drawGrid(zoom, gridColor, false);
+        }
+      }
 
       // Set first page as background
       if (pages.length > 0) {
@@ -555,7 +576,7 @@ const Canvas = () => {
     if (!canvas || !pages[pageIndex]) return;
 
     // Save current page canvas data before switching
-    if (pdfPages.length > 0 && currentPage >= 0) {
+    if (pdfPages.length > 0 && currentPage >= 0 && currentPage < pdfPages.length) {
       const updatedPages = [...pdfPages];
       updatedPages[currentPage] = {
         ...updatedPages[currentPage],
@@ -566,6 +587,14 @@ const Canvas = () => {
 
     // Load new page
     const pageData = pages[pageIndex];
+
+    // Resize canvas to page dimensions
+    if (pageData.width && pageData.height) {
+      canvas.setDimensions({
+        width: pageData.width,
+        height: pageData.height
+      });
+    }
 
     // Clear canvas (keep grid)
     const objects = canvas.getObjects();
