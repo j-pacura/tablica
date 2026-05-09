@@ -2,11 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { fabric } from 'fabric';
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { boardsAPI } from '../../services/api';
 import Button from '../UI/Button';
 
-// Configure PDF.js worker - using unpkg CDN with https
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
+// Configure PDF.js worker - using local worker from node_modules
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 const Canvas = () => {
   const { boardId } = useParams();
