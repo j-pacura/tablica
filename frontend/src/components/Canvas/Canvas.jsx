@@ -575,18 +575,24 @@ const Canvas = () => {
       }
     });
 
-    // Set PDF page as background image
+    // Set PDF page as background image - maintain aspect ratio
     fabric.Image.fromURL(pageData.imageData, (img) => {
+      // Don't stretch - maintain aspect ratio and original size
+      // PDF is already rendered at 2x scale for quality
       canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
-        scaleX: canvas.width / img.width,
-        scaleY: canvas.height / img.height
+        scaleX: 1,
+        scaleY: 1,
+        left: 0,
+        top: 0,
+        originX: 'left',
+        originY: 'top'
       });
 
       // Load saved drawings for this page
       if (pageData.canvasData) {
         canvas.loadFromJSON(pageData.canvasData, () => {
           // Re-add grid after loading
-          if (canvas.drawGrid) canvas.drawGrid(zoom);
+          if (canvas.drawGrid) canvas.drawGrid(zoom, gridColor);
           canvas.renderAll();
         });
       }
