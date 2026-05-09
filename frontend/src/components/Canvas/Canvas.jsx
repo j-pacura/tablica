@@ -5,8 +5,8 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { boardsAPI } from '../../services/api';
 import Button from '../UI/Button';
 
-// Configure PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Configure PDF.js worker - using unpkg CDN with https
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
 
 const Canvas = () => {
   const { boardId } = useParams();
@@ -450,19 +450,33 @@ const Canvas = () => {
   // PDF Import Functions
   const handlePdfUpload = async (event) => {
     const file = event.target.files[0];
-    if (!file || file.type !== 'application/pdf') {
-      alert('Proszę wybrać plik PDF');
+    if (!file) {
+      return; // User cancelled
+    }
+
+    if (file.type !== 'application/pdf') {
+      alert('Proszę wybrać plik PDF (wybrany plik: ' + file.type + ')');
       return;
     }
 
+    console.log('Ładowanie PDF:', file.name, 'Rozmiar:', file.size, 'bytes');
+
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      console.log('ArrayBuffer załadowany, rozmiar:', arrayBuffer.byteLength);
+
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      console.log('PDF.js loading task utworzony');
+
+      const pdf = await loadingTask.promise;
+      console.log('PDF załadowany, liczba stron:', pdf.numPages);
+
       const numPages = pdf.numPages;
 
       // Render all pages as thumbnails for selection
       const previews = [];
       for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        console.log('Renderowanie miniaturki strony', pageNum);
         const page = await pdf.getPage(pageNum);
         const viewport = page.getViewport({ scale: 0.3 }); // Small preview
 
@@ -480,12 +494,15 @@ const Canvas = () => {
         });
       }
 
+      console.log('Wszystkie miniaturki wyrenderowane');
       setPdfPreview(previews);
       setShowPdfModal(true);
       pdfFileRef.current = { pdf, arrayBuffer };
     } catch (error) {
-      console.error('Błąd ładowania PDF:', error);
-      alert('Nie udało się załadować PDF');
+      console.error('BŁĄD ładowania PDF:', error);
+      console.error('Szczegóły błędu:', error.message);
+      console.error('Stack trace:', error.stack);
+      alert('Nie udało się załadować PDF\n\nBłąd: ' + error.message + '\n\nSprawdź konsolę (F12) aby zobaczyć szczegóły.');
     }
   };
 
