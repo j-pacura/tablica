@@ -43,6 +43,22 @@ const Canvas = () => {
   const [gridColor, setGridColor] = useState('#e0e0e0');
   const [showBackgroundSettings, setShowBackgroundSettings] = useState(false);
 
+  // Color palette - 12 popular colors
+  const colorPalette = [
+    '#000000', // Black
+    '#FFFFFF', // White
+    '#808080', // Gray
+    '#C0C0C0', // Light Gray
+    '#FF0000', // Red
+    '#00FF00', // Green
+    '#0000FF', // Blue
+    '#FFFF00', // Yellow
+    '#FF00FF', // Magenta
+    '#00FFFF', // Cyan
+    '#FFA500', // Orange
+    '#800080', // Purple
+  ];
+
   // Background presets
   const backgroundPresets = [
     { name: 'Jasne', bg: '#FFFFFF', grid: '#e0e0e0' },
@@ -177,10 +193,11 @@ const Canvas = () => {
       canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, newZoom);
       setZoom(newZoom);
 
-      // Redraw grid if zoom crossed threshold
-      if ((oldZoom < 2 && newZoom >= 2) || (oldZoom >= 2 && newZoom < 2) ||
-          (oldZoom < 4 && newZoom >= 4) || (oldZoom >= 4 && newZoom < 4)) {
-        if (canvas.drawGrid) canvas.drawGrid(newZoom, gridColor);
+      // Redraw grid if zoom crossed threshold (only if no PDF loaded)
+      if (pdfPages.length === 0 &&
+          ((oldZoom < 2 && newZoom >= 2) || (oldZoom >= 2 && newZoom < 2) ||
+          (oldZoom < 4 && newZoom >= 4) || (oldZoom >= 4 && newZoom < 4))) {
+        if (canvas.drawGrid) canvas.drawGrid(newZoom, gridColor, true);
       }
 
       opt.e.preventDefault();
@@ -648,9 +665,9 @@ const Canvas = () => {
     canvas.setZoom(newZoom);
     setZoom(newZoom);
 
-    // Redraw grid if crossed threshold
-    if ((oldZoom < 2 && newZoom >= 2) || (oldZoom < 4 && newZoom >= 4)) {
-      if (canvas.drawGrid) canvas.drawGrid(newZoom, gridColor);
+    // Redraw grid if crossed threshold (only if no PDF)
+    if (pdfPages.length === 0 && ((oldZoom < 2 && newZoom >= 2) || (oldZoom < 4 && newZoom >= 4))) {
+      if (canvas.drawGrid) canvas.drawGrid(newZoom, gridColor, true);
     }
   };
 
@@ -663,9 +680,9 @@ const Canvas = () => {
     canvas.setZoom(newZoom);
     setZoom(newZoom);
 
-    // Redraw grid if crossed threshold
-    if ((oldZoom >= 2 && newZoom < 2) || (oldZoom >= 4 && newZoom < 4)) {
-      if (canvas.drawGrid) canvas.drawGrid(newZoom, gridColor);
+    // Redraw grid if crossed threshold (only if no PDF)
+    if (pdfPages.length === 0 && ((oldZoom >= 2 && newZoom < 2) || (oldZoom >= 4 && newZoom < 4))) {
+      if (canvas.drawGrid) canvas.drawGrid(newZoom, gridColor, true);
     }
   };
 
@@ -677,9 +694,9 @@ const Canvas = () => {
     canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
     setZoom(1);
 
-    // Redraw grid
-    if (oldZoom !== 1 && canvas.drawGrid) {
-      canvas.drawGrid(1, gridColor);
+    // Redraw grid (only if no PDF)
+    if (pdfPages.length === 0 && oldZoom !== 1 && canvas.drawGrid) {
+      canvas.drawGrid(1, gridColor, true);
     }
   };
 
@@ -917,13 +934,31 @@ const Canvas = () => {
             <label className="block text-sm font-medium mb-2">
               Kolor
             </label>
-            <input
-              type="color"
-              value={currentColor}
-              onChange={(e) => setCurrentColor(e.target.value)}
-              className="w-full h-12 rounded border cursor-pointer"
-            />
-            <p className="text-xs text-gray-500 mt-1 text-center">{currentColor}</p>
+            {/* Color palette tiles */}
+            <div className="grid grid-cols-4 gap-2 mb-3">
+              {colorPalette.map((color, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setCurrentColor(color)}
+                  className={`w-full h-10 rounded border-2 transition ${
+                    currentColor === color ? 'border-blue-500 scale-110' : 'border-gray-300'
+                  }`}
+                  style={{ backgroundColor: color }}
+                  title={color}
+                />
+              ))}
+            </div>
+            {/* Custom color picker */}
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={currentColor}
+                onChange={(e) => setCurrentColor(e.target.value)}
+                className="w-12 h-10 rounded border cursor-pointer"
+                title="Własny kolor"
+              />
+              <span className="text-xs text-gray-600 font-mono">{currentColor}</span>
+            </div>
           </div>
 
           <div className="mb-6">
